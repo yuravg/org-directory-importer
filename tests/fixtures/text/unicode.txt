@@ -1,0 +1,2 @@
+Hello 世界 🌍
+UTF-8 encoded text with emoji.
