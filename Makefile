@@ -5,6 +5,7 @@
 
 # Package information
 PACKAGE := org-directory-importer.el
+VERSION := $(shell perl -ne 'if (/^;;\s*Version:\s*(\S+)/) {print $$1; last}' $(PACKAGE))
 TEST_FILES := tests/test-gitignore.el \
               tests/test-binary-detection.el \
               tests/test-language-detection.el \
@@ -21,7 +22,7 @@ BATCH := $(EMACS) -batch -l ert -l $(PACKAGE)
 #------------------------------------------------------------------------------
 
 help:
-	@echo "org-directory-importer - Makefile targets"
+	@echo "org-directory-importer v$(VERSION) - Makefile targets"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test              Run all tests via test-suite.el (fast)"
