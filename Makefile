@@ -1,5 +1,5 @@
 .PHONY: help test test-all test-interactive test-gitignore test-binary test-language \
-        test-roundtrip test-edge-cases test-update compile lint checkdoc ci clean
+        test-roundtrip test-edge-cases test-update test-import-file compile lint checkdoc ci clean
 
 .DEFAULT_GOAL := help
 
@@ -11,7 +11,8 @@ TEST_FILES := tests/test-gitignore.el \
               tests/test-language-detection.el \
               tests/test-roundtrip.el \
               tests/test-edge-cases.el \
-              tests/test-update.el
+              tests/test-update.el \
+              tests/test-import-file.el
 
 # Emacs command
 EMACS ?= emacs
@@ -36,6 +37,7 @@ help:
 	@echo "  make test-roundtrip    Run import/tangle roundtrip test (1 test)"
 	@echo "  make test-edge-cases   Run edge case tests (13 tests)"
 	@echo "  make test-update       Run incremental update tests (14 tests)"
+	@echo "  make test-import-file  Run single file import tests (13 tests)"
 	@echo ""
 	@echo "Quality checks:"
 	@echo "  make compile           Byte-compile the package"
@@ -48,7 +50,7 @@ help:
 	@echo "Maintenance:"
 	@echo "  make clean             Remove byte-compiled files"
 	@echo ""
-	@echo "Current status: 90/90 tests passing ✓"
+	@echo "Current status: 102/102 tests passing ✓"
 
 #------------------------------------------------------------------------------
 # Testing
@@ -60,7 +62,7 @@ test:
 	@$(EMACS) -batch -l ert -l tests/test-suite.el
 
 # Run all individual test files (more verbose output)
-test-all: test-gitignore test-binary test-language test-roundtrip test-edge-cases test-update
+test-all: test-gitignore test-binary test-language test-roundtrip test-edge-cases test-update test-import-file
 	@echo ""
 	@echo "✓ All test suites passed!"
 
@@ -88,6 +90,10 @@ test-edge-cases:
 test-update:
 	@echo "Running update tests..."
 	@$(BATCH) -l tests/test-update.el -f ert-run-tests-batch-and-exit
+
+test-import-file:
+	@echo "Running import-file tests..."
+	@$(BATCH) -l tests/test-import-file.el -f ert-run-tests-batch-and-exit
 
 # Run tests interactively in Emacs
 test-interactive:
@@ -133,7 +139,7 @@ ci: clean compile checkdoc test
 	@echo "✓ All CI checks passed!"
 	@echo "  - Byte compilation: OK"
 	@echo "  - Documentation: OK"
-	@echo "  - Tests: 90/90 passing"
+	@echo "  - Tests: 102/102 passing"
 
 #------------------------------------------------------------------------------
 # Maintenance
