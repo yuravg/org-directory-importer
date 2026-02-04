@@ -49,9 +49,26 @@ The package will create a hierarchical Org structure with:
 
 ### Commands
 
-- `org-directory-import` - Import with metadata and change tracking (supports incremental updates)
-- `org-directory-import-plain` - Import without metadata (for one-time snapshots)
-- `org-directory-import-update` - Update an existing tracked import with file system changes
+- `org-directory-importer-import` - Import a directory with metadata and change tracking (supports incremental updates)
+- `org-directory-importer-import-plain` - Import a directory directly at point without metadata wrapper
+- `org-directory-importer-import-file` - Import a single file unconditionally with change-tracking metadata
+- `org-directory-importer-import-update` - Update an existing tracked import with file system changes
+
+### Single File Import
+
+Import a single file without directory structure or filtering constraints:
+
+```elisp
+M-x org-directory-importer-import-file RET /path/to/file.py RET
+```
+
+This command:
+- Imports **any file** regardless of exclusion patterns or gitignore rules
+- Does not check for binary content or enforce size limits
+- Creates a heading with metadata for change tracking
+- Useful for importing files from non-tracked sources or breaking filter constraints
+
+The file can be updated incrementally using `org-directory-importer-import-update`.
 
 ### Tangling
 

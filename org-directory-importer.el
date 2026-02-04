@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.0.0
+;; Version: 1.1.0
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
@@ -27,6 +27,12 @@
 ;; `org-directory-importer-import-plain'
 ;;   Import a directory directly at point without metadata wrapper.
 ;;   Use this when you want to merge content into existing structure.
+;;
+;; `org-directory-importer-import-file'
+;;   Import a single file unconditionally at point.
+;;   Creates a heading with a tangleable source block and change-tracking metadata.
+;;   Unlike directory imports, bypasses all filters (patterns, gitignore, binary checks).
+;;   Use this for importing specific files or files from non-tracked sources.
 ;;
 ;; `org-directory-importer-import-update'
 ;;   Update an existing import incrementally (requires IMPORT_SOURCE property).
@@ -770,6 +776,87 @@ For tracked imports with update support, use `org-directory-importer-import' ins
              files-processed
              (if (= files-processed 1) "" "s")
              expanded-directory)))
+
+;;;###autoload
+(defun org-directory-importer-import-file (file)
+  "Import FILE unconditionally into current Org buffer at point.
+This is the inverse of `org-babel-tangle-file' - it takes a source
+file and creates an Org heading with a tangleable source block.
+
+Unlike directory import commands, this function:
+- Imports ANY file regardless of patterns or gitignore
+- Does not check for binary content
+- Does not enforce size limits
+
+This is useful for importing files that would normally be filtered,
+or for importing into an Org file not created by this package.
+
+USAGE:
+  M-x org-directory-importer-import-file RET /path/to/file RET"
+  (interactive "fSelect file to import: ")
+
+  ;; Validate preconditions
+  (unless (derived-mode-p 'org-mode)
+    (user-error "This command only works in Org-mode buffers"))
+
+  (unless (file-exists-p file)
+    (user-error "File does not exist: %s" file))
+
+  (unless (file-readable-p file)
+    (user-error "File is not readable: %s" file))
+
+  ;; For relative tangle paths, require the buffer to be saved
+  (when (and (eq org-directory-importer-tangle-path-type 'relative)
+             (not buffer-file-name))
+    (user-error "Please save the Org buffer before importing with relative paths.\nThis ensures tangle paths are calculated correctly.\nAlternatively, set `org-directory-importer-tangle-path-type' to 'absolute"))
+
+  (let* ((expanded-file (expand-file-name file))
+         (filename (file-name-nondirectory expanded-file))
+         (file-dir (file-name-directory expanded-file))
+         (language (org-directory-importer--detect-language expanded-file))
+         (tangle-path (org-directory-importer--get-tangle-path
+                       expanded-file file-dir))
+         ;; Determine header level from context
+         ;; If inside/under a heading, insert as subheading (level + 1)
+         ;; Otherwise insert at top level
+         (header-level (save-excursion
+                         (if (ignore-errors (org-back-to-heading t))
+                             (1+ (org-current-level))
+                           1)))
+         (header-stars (make-string header-level ?*))
+         (file-content (with-temp-buffer
+                         (insert-file-contents expanded-file)
+                         (buffer-string)))
+         (checksum (secure-hash 'sha256 file-content))
+         (attrs (file-attributes expanded-file)))
+
+    ;; Ensure we start on a new line
+    (unless (bolp)
+      (insert "\n"))
+
+    ;; Insert the file as an Org entry with metadata
+    (insert (format "%s %s\n" header-stars filename))
+
+    ;; Add properties for change tracking
+    (insert ":PROPERTIES:\n")
+    (insert (format ":IMPORT_PATH: %s\n" filename))
+    (insert (format ":IMPORT_CHECKSUM: %s\n" checksum))
+    (insert (format ":IMPORT_SIZE: %s\n"
+                    (number-to-string (file-attribute-size attrs))))
+    (insert (format ":IMPORT_MTIME: %s\n"
+                    (format-time-string "%Y-%m-%d %H:%M:%S"
+                                        (file-attribute-modification-time attrs))))
+    (insert ":END:\n")
+
+    ;; Insert source block
+    (insert (format "#+begin_src %s :tangle %s :mkdirp yes\n"
+                    language tangle-path))
+    (insert file-content)
+    (unless (string-suffix-p "\n" file-content)
+      (insert "\n"))
+    (insert "#+end_src\n\n")
+
+    (message "Imported file: %s" filename)))
 
 ;;;###autoload
 (defun org-directory-importer-import-update ()
