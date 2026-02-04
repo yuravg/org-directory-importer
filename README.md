@@ -49,10 +49,12 @@ The package will create a hierarchical Org structure with:
 
 ### Commands
 
-- `org-directory-importer-import` - Import a directory with metadata and change tracking (supports incremental updates)
-- `org-directory-importer-import-plain` - Import a directory directly at point without metadata wrapper
+- `org-directory-importer-import` - Import a directory with metadata and change tracking
+  - Use `C-u` prefix for plain import without metadata
+- `org-directory-importer-import-plain` - *(Deprecated: use `C-u org-directory-importer-import` instead)*
 - `org-directory-importer-import-file` - Import a single file unconditionally with change-tracking metadata
 - `org-directory-importer-import-update` - Update an existing tracked import with file system changes
+- `org-directory-importer-prune-metadata` - Remove all IMPORT_* properties from current buffer
 
 ### Single File Import
 
@@ -69,6 +71,32 @@ This command:
 - Useful for importing files from non-tracked sources or breaking filter constraints
 
 The file can be updated incrementally using `org-directory-importer-import-update`.
+
+### Plain Import (Without Metadata)
+
+Import a directory without change-tracking metadata:
+
+```
+C-u M-x org-directory-importer-import RET /path/to/directory RET
+```
+
+This imports the structure without:
+- The top-level metadata heading (IMPORT_SOURCE, IMPORT_DATE)
+- File-level IMPORT_* properties (IMPORT_PATH, IMPORT_CHECKSUM, etc.)
+
+Use this when you want plain content that cannot be incrementally updated.
+
+### Removing Metadata
+
+To remove all tracking metadata from an existing import:
+
+```
+M-x org-directory-importer-prune-metadata
+```
+
+This removes all IMPORT_* properties from all headings in the buffer while
+preserving the content itself. After pruning, `org-directory-importer-import-update`
+will no longer work on the affected entries.
 
 ### Tangling
 

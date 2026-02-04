@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.1.0
+;; Version: 1.2.0
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
@@ -23,16 +23,23 @@
 ;;   Import a directory with metadata header and timestamp.
 ;;   Inserts a top-level heading containing import source and date.
 ;;   Use this for documenting where content came from and incremental updates.
+;;   With C-u prefix: Import without any metadata (plain content).
 ;;
 ;; `org-directory-importer-import-plain'
 ;;   Import a directory directly at point without metadata wrapper.
-;;   Use this when you want to merge content into existing structure.
+;;   Now wraps `org-directory-importer-import' with skip-metadata.
+;;   Use C-u M-x org-directory-importer-import instead.
 ;;
 ;; `org-directory-importer-import-file'
 ;;   Import a single file unconditionally at point.
 ;;   Creates a heading with a tangleable source block and change-tracking metadata.
 ;;   Unlike directory imports, bypasses all filters (patterns, gitignore, binary checks).
 ;;   Use this for importing specific files or files from non-tracked sources.
+;;
+;; `org-directory-importer-prune-metadata'
+;;   Remove all IMPORT_* properties from current buffer.
+;;   Cleans up change-tracking metadata while preserving content.
+;;   Use after importing to convert tracked imports to plain content.
 ;;
 ;; `org-directory-importer-import-update'
 ;;   Update an existing import incrementally (requires IMPORT_SOURCE property).
@@ -457,9 +464,10 @@ relative paths like ../../other-dir/."
    ((> size 1024) (format "%.1fKB" (/ size 1024.0)))
    (t (format "%dB" size))))
 
-(defun org-directory-importer--insert-file-content (file-path header-level base-directory)
+(defun org-directory-importer--insert-file-content (file-path header-level base-directory &optional skip-metadata)
   "Insert FILE-PATH as an Org header with Babel source block at HEADER-LEVEL.
 BASE-DIRECTORY is used to calculate relative paths for tangling.
+When SKIP-METADATA is non-nil, omit IMPORT_* properties from the entry.
 Returns t if file was processed successfully, nil otherwise."
   (let ((filename (file-name-nondirectory file-path)))
     (cond
@@ -500,19 +508,20 @@ Returns t if file was processed successfully, nil otherwise."
                  (attrs (file-attributes file-path))
                  (rel-path (file-relative-name file-path base-directory)))
 
-            ;; Insert the file as an Org entry with metadata
+            ;; Insert the file as an Org entry
             (insert (format "%s %s\n" header-stars filename))
 
-            ;; Add properties for change tracking
-            (insert ":PROPERTIES:\n")
-            (insert (format ":IMPORT_PATH: %s\n" rel-path))
-            (insert (format ":IMPORT_CHECKSUM: %s\n" checksum))
-            (insert (format ":IMPORT_SIZE: %s\n"
-                            (number-to-string (file-attribute-size attrs))))
-            (insert (format ":IMPORT_MTIME: %s\n"
-                            (format-time-string "%Y-%m-%d %H:%M:%S"
-                                               (file-attribute-modification-time attrs))))
-            (insert ":END:\n")
+            ;; Add properties for change tracking (unless skip-metadata)
+            (unless skip-metadata
+              (insert ":PROPERTIES:\n")
+              (insert (format ":IMPORT_PATH: %s\n" rel-path))
+              (insert (format ":IMPORT_CHECKSUM: %s\n" checksum))
+              (insert (format ":IMPORT_SIZE: %s\n"
+                              (number-to-string (file-attribute-size attrs))))
+              (insert (format ":IMPORT_MTIME: %s\n"
+                              (format-time-string "%Y-%m-%d %H:%M:%S"
+                                                  (file-attribute-modification-time attrs))))
+              (insert ":END:\n"))
 
             ;; Insert source block
             (insert (format "#+begin_src %s :tangle %s :mkdirp yes\n"
@@ -567,11 +576,12 @@ the set of already-visited canonical paths."
         (member canonical-path visited-dirs))
     (error nil)))
 
-(defun org-directory-importer--process-directory-recursive (directory header-level base-directory &optional visited-dirs)
+(defun org-directory-importer--process-directory-recursive (directory header-level base-directory &optional visited-dirs skip-metadata)
   "Recursively process DIRECTORY, inserting contents at HEADER-LEVEL.
 BASE-DIRECTORY is used for calculating relative paths.
 VISITED-DIRS is a list of canonical directory paths already visited,
 used to detect symlink cycles.
+When SKIP-METADATA is non-nil, omit IMPORT_* properties from file entries.
 Returns the total number of files processed."
   (let ((directory-name (file-name-nondirectory directory))
         (total-files-processed 0)
@@ -601,7 +611,7 @@ Returns the total number of files processed."
                    ((file-regular-p entry)
                     (when (and (file-readable-p entry)
                                (org-directory-importer--insert-file-content
-                                entry (1+ header-level) base-directory))
+                                entry (1+ header-level) base-directory skip-metadata))
                       (cl-incf total-files-processed)))
 
                    ;; Process subdirectories recursively
@@ -610,7 +620,7 @@ Returns the total number of files processed."
                     (if (file-accessible-directory-p entry)
                         (cl-incf total-files-processed
                                  (org-directory-importer--process-directory-recursive
-                                  entry (1+ header-level) base-directory current-visited))
+                                  entry (1+ header-level) base-directory current-visited skip-metadata))
                       (message "Skipping inaccessible directory: %s"
                                (file-name-nondirectory entry)))))
                 ;; Handle permission errors on individual entries
@@ -688,25 +698,35 @@ Signals user-error if validation fails."
     (insert ":END:\n\n")))
 
 ;;;###autoload
-(defun org-directory-importer-import (directory)
-  "Import DIRECTORY structure into current Org buffer with metadata header.
+(defun org-directory-importer-import (directory &optional skip-metadata)
+  "Import DIRECTORY structure into current Org buffer.
 
 USAGE:
   M-x org-directory-importer-import RET /path/to/directory RET
 
-Creates a top-level heading with import metadata (source path, timestamp)
-followed by the directory structure.  Each directory becomes a heading,
-and each file becomes a Babel source block with :tangle property.
+With \\[universal-argument] prefix (C-u): Import without metadata for plain content.
+Without prefix: Import with full change-tracking metadata.
 
-The imported structure can be tangled back to recreate the original files.
-Imported directories can be updated incrementally using `org-directory-importer-import-update'.
+When importing with metadata (default):
+- Creates a top-level heading with import metadata (source path, timestamp)
+- Each file entry includes IMPORT_* properties for change tracking
+- Supports incremental updates via `org-directory-importer-import-update'
 
-For imports without metadata/tracking, use `org-directory-importer-import-plain'."
-  (interactive "DSelect directory to import: ")
+When importing without metadata (C-u prefix or SKIP-METADATA non-nil):
+- No metadata wrapper heading is created
+- No IMPORT_* properties on files
+- Content cannot be updated with `org-directory-importer-import-update'
+
+Each directory becomes a heading and each file becomes a Babel source
+block with :tangle property that can be tangled back to recreate files."
+  (interactive (list (read-directory-name "Select directory to import: ")
+                     current-prefix-arg))
 
   (let* ((expanded-directory (expand-file-name directory))
          (start-point (point))
          (files-processed 0)
+         ;; Header level: 2 when metadata wrapper exists, 1 when plain
+         (header-level (if skip-metadata 1 2))
          ;; Store current Org file to prevent self-import
          (org-directory-importer--current-org-file
           (when buffer-file-name
@@ -717,15 +737,18 @@ For imports without metadata/tracking, use `org-directory-importer-import-plain'
     ;; Validate preconditions
     (org-directory-importer--validate-import-preconditions expanded-directory)
 
-    (message "Importing directory structure from: %s" expanded-directory)
+    (message "Importing directory structure from: %s%s"
+             expanded-directory
+             (if skip-metadata " (plain, no metadata)" ""))
 
-    ;; Insert metadata header
-    (org-directory-importer--insert-import-metadata expanded-directory)
+    ;; Insert metadata header (unless skip-metadata)
+    (unless skip-metadata
+      (org-directory-importer--insert-import-metadata expanded-directory))
 
     ;; Process the directory
     (setq files-processed
           (org-directory-importer--process-directory-recursive
-           expanded-directory 2 expanded-directory))
+           expanded-directory header-level expanded-directory nil skip-metadata))
 
     (message "Successfully imported %d file%s from: %s"
              files-processed
@@ -739,43 +762,19 @@ For imports without metadata/tracking, use `org-directory-importer-import-plain'
 (defun org-directory-importer-import-plain (directory)
   "Import DIRECTORY structure without metadata or change tracking.
 
-USAGE:
-  M-x org-directory-importer-import-plain RET /path/to/directory RET
+DEPRECATED: Use `C-u M-x org-directory-importer-import' instead.
+
+This function is now a wrapper around `org-directory-importer-import'
+with the SKIP-METADATA argument set to t.
 
 Imports the directory structure directly at point without creating a
-metadata wrapper heading.  Use this for one-time imports when you don't
-need change tracking or incremental updates.
+metadata wrapper heading or file-level IMPORT_* properties.  Use this
+for one-time imports when you don't need change tracking.
 
-Each directory becomes a heading and each file becomes a Babel source
-block with :tangle property.  The imported structure can be tangled back
-to recreate the files, but cannot be updated with `org-directory-importer-import-update'.
-
-For tracked imports with update support, use `org-directory-importer-import' instead."
+The imported structure can be tangled back to recreate files, but cannot
+be updated with `org-directory-importer-import-update'."
   (interactive "DSelect directory to import: ")
-
-  (let* ((expanded-directory (expand-file-name directory))
-         (files-processed 0)
-         ;; Store current Org file to prevent self-import
-         (org-directory-importer--current-org-file
-          (when buffer-file-name
-            (condition-case nil
-                (file-truename buffer-file-name)
-              (error nil)))))
-
-    ;; Validate preconditions
-    (org-directory-importer--validate-import-preconditions expanded-directory)
-
-    (message "Importing directory structure from: %s" expanded-directory)
-
-    ;; Process directory starting at level 1 (no metadata wrapper)
-    (setq files-processed
-          (org-directory-importer--process-directory-recursive
-           expanded-directory 1 expanded-directory))
-
-    (message "Successfully imported %d file%s from: %s"
-             files-processed
-             (if (= files-processed 1) "" "s")
-             expanded-directory)))
+  (org-directory-importer-import directory t))
 
 ;;;###autoload
 (defun org-directory-importer-import-file (file)
@@ -857,6 +856,49 @@ USAGE:
     (insert "#+end_src\n\n")
 
     (message "Imported file: %s" filename)))
+
+;;;###autoload
+(defun org-directory-importer-prune-metadata ()
+  "Remove all IMPORT_* metadata properties from current Org buffer.
+
+USAGE:
+  M-x org-directory-importer-prune-metadata RET
+
+Removes package-specific properties from all headings in the buffer:
+- IMPORT_SOURCE (directory-level)
+- IMPORT_DATE (directory-level)
+- IMPORT_PATH (file-level)
+- IMPORT_CHECKSUM (file-level)
+- IMPORT_SIZE (file-level)
+- IMPORT_MTIME (file-level)
+
+Other properties are preserved.  Use this command when you no longer
+need change tracking or want to convert a tracked import to plain content.
+
+After pruning, `org-directory-importer-import-update' will no longer work
+on the affected entries."
+  (interactive)
+  (unless (derived-mode-p 'org-mode)
+    (user-error "This command only works in Org-mode buffers"))
+  (let ((count-entries 0)
+        (count-props 0))
+    (save-excursion
+      (org-map-entries
+       (lambda ()
+         (let ((import-props (seq-filter
+                              (lambda (prop)
+                                (string-prefix-p "IMPORT_" (car prop)))
+                              (org-entry-properties))))
+           (when import-props
+             (dolist (prop-pair import-props)
+               (org-delete-property (car prop-pair))
+               (cl-incf count-props))
+             (cl-incf count-entries))))))
+    (if (> count-props 0)
+        (message "Pruned %d propert%s from %d entr%s"
+                 count-props (if (= count-props 1) "y" "ies")
+                 count-entries (if (= count-entries 1) "y" "ies"))
+      (message "No IMPORT_* properties found in buffer"))))
 
 ;;;###autoload
 (defun org-directory-importer-import-update ()
