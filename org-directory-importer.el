@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.2.0
+;; Version: 1.2.1
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
@@ -35,6 +35,7 @@
 ;;   Creates a heading with a tangleable source block and change-tracking metadata.
 ;;   Unlike directory imports, bypasses all filters (patterns, gitignore, binary checks).
 ;;   Use this for importing specific files or files from non-tracked sources.
+;;   With C-u prefix: Import without any metadata (plain content).
 ;;
 ;; `org-directory-importer-prune-metadata'
 ;;   Remove all IMPORT_* properties from current buffer.
@@ -777,22 +778,30 @@ be updated with `org-directory-importer-import-update'."
   (org-directory-importer-import directory t))
 
 ;;;###autoload
-(defun org-directory-importer-import-file (file)
+(defun org-directory-importer-import-file (file &optional skip-metadata)
   "Import FILE unconditionally into current Org buffer at point.
+
+USAGE:
+  M-x org-directory-importer-import-file RET /path/to/file RET
+
+With \\[universal-argument] prefix (C-u): Import without metadata for plain content.
+Without prefix: Import with full change-tracking metadata.
+
+When importing with metadata (default):
+- Adds IMPORT_* properties (path, checksum, size, mtime) for change tracking
+
+When importing without metadata (C-u prefix or SKIP-METADATA non-nil):
+- No IMPORT_* properties on the file entry
+
 This is the inverse of `org-babel-tangle-file' - it takes a source
 file and creates an Org heading with a tangleable source block.
 
 Unlike directory import commands, this function:
 - Imports ANY file regardless of patterns or gitignore
 - Does not check for binary content
-- Does not enforce size limits
-
-This is useful for importing files that would normally be filtered,
-or for importing into an Org file not created by this package.
-
-USAGE:
-  M-x org-directory-importer-import-file RET /path/to/file RET"
-  (interactive "fSelect file to import: ")
+- Does not enforce size limits"
+  (interactive (list (read-file-name "Select file to import: ")
+                     current-prefix-arg))
 
   ;; Validate preconditions
   (unless (derived-mode-p 'org-mode)
@@ -836,16 +845,17 @@ USAGE:
     ;; Insert the file as an Org entry with metadata
     (insert (format "%s %s\n" header-stars filename))
 
-    ;; Add properties for change tracking
-    (insert ":PROPERTIES:\n")
-    (insert (format ":IMPORT_PATH: %s\n" filename))
-    (insert (format ":IMPORT_CHECKSUM: %s\n" checksum))
-    (insert (format ":IMPORT_SIZE: %s\n"
-                    (number-to-string (file-attribute-size attrs))))
-    (insert (format ":IMPORT_MTIME: %s\n"
-                    (format-time-string "%Y-%m-%d %H:%M:%S"
-                                        (file-attribute-modification-time attrs))))
-    (insert ":END:\n")
+    ;; Add properties for change tracking (unless skip-metadata)
+    (unless skip-metadata
+      (insert ":PROPERTIES:\n")
+      (insert (format ":IMPORT_PATH: %s\n" filename))
+      (insert (format ":IMPORT_CHECKSUM: %s\n" checksum))
+      (insert (format ":IMPORT_SIZE: %s\n"
+                      (number-to-string (file-attribute-size attrs))))
+      (insert (format ":IMPORT_MTIME: %s\n"
+                      (format-time-string "%Y-%m-%d %H:%M:%S"
+                                          (file-attribute-modification-time attrs))))
+      (insert ":END:\n"))
 
     ;; Insert source block
     (insert (format "#+begin_src %s :tangle %s :mkdirp yes\n"
@@ -855,7 +865,9 @@ USAGE:
       (insert "\n"))
     (insert "#+end_src\n\n")
 
-    (message "Imported file: %s" filename)))
+    (message "Imported file: %s%s"
+             filename
+             (if skip-metadata " (plain, no metadata)" ""))))
 
 ;;;###autoload
 (defun org-directory-importer-prune-metadata ()
