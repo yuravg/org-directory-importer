@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.2.1
+;; Version: 1.3.0
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
@@ -41,6 +41,12 @@
 ;;   Remove all IMPORT_* properties from current buffer.
 ;;   Cleans up change-tracking metadata while preserving content.
 ;;   Use after importing to convert tracked imports to plain content.
+;;
+;; `org-directory-importer-refresh-block'
+;;   Refresh source block at point from its tangle target file.
+;;   Re-reads the file specified in :tangle and updates block content.
+;;   If IMPORT_* metadata exists, updates checksum, size, and mtime.
+;;   Use when external changes were made to the source file.
 ;;
 ;; `org-directory-importer-import-update'
 ;;   Update an existing import incrementally (requires IMPORT_SOURCE property).
@@ -911,6 +917,106 @@ on the affected entries."
                  count-props (if (= count-props 1) "y" "ies")
                  count-entries (if (= count-entries 1) "y" "ies"))
       (message "No IMPORT_* properties found in buffer"))))
+
+;;;###autoload
+(defun org-directory-importer-refresh-block ()
+  "Refresh source block at point from its tangle target file.
+
+USAGE:
+  M-x org-directory-importer-refresh-block RET
+
+Reads the file specified in the :tangle header of the current source
+block and updates the block content.  If the containing heading has
+IMPORT_* metadata properties, they are also updated.
+
+This is useful when external changes have been made to the source file
+and you want to synchronize the Org document with those changes.
+
+Point must be inside a source block with a :tangle path."
+  (interactive)
+  (unless (derived-mode-p 'org-mode)
+    (user-error "This command only works in Org-mode buffers"))
+
+  ;; Get source block info
+  (let ((block-info (org-babel-get-src-block-info 'light)))
+    (unless block-info
+      (user-error "Point is not inside a source block"))
+
+    (let* ((params (nth 2 block-info))
+           (tangle-path (cdr (assq :tangle params))))
+
+      ;; Validate tangle path
+      (when (or (null tangle-path)
+                (string= tangle-path "no")
+                (string-empty-p tangle-path))
+        (user-error "No tangle path specified for this source block"))
+
+      ;; Resolve relative paths against Org file directory
+      (let* ((org-file-dir (if buffer-file-name
+                               (file-name-directory buffer-file-name)
+                             default-directory))
+             (resolved-path (expand-file-name tangle-path org-file-dir)))
+
+        ;; Validate file exists and is readable
+        (unless (file-exists-p resolved-path)
+          (user-error "Tangle target file not found: %s" resolved-path))
+        (unless (file-readable-p resolved-path)
+          (user-error "Tangle target file is not readable: %s" resolved-path))
+
+        ;; Read new content
+        (let* ((new-content (with-temp-buffer
+                              (insert-file-contents resolved-path)
+                              (buffer-string)))
+               (new-checksum (secure-hash 'sha256 new-content))
+               (attrs (file-attributes resolved-path))
+               (has-metadata nil))
+
+          ;; Check if heading has IMPORT_* metadata
+          (save-excursion
+            (when (ignore-errors (org-back-to-heading t))
+              (setq has-metadata (org-entry-get nil "IMPORT_CHECKSUM"))))
+
+          ;; Update metadata if present
+          (when has-metadata
+            (save-excursion
+              (org-back-to-heading t)
+              (org-set-property "IMPORT_CHECKSUM" new-checksum)
+              (org-set-property "IMPORT_SIZE"
+                               (number-to-string (file-attribute-size attrs)))
+              (org-set-property "IMPORT_MTIME"
+                               (format-time-string "%Y-%m-%d %H:%M:%S"
+                                                  (file-attribute-modification-time attrs)))))
+
+          ;; Find and replace source block content
+          ;; We need to find the current block's boundaries
+          (let ((block-start nil)
+                (block-end nil)
+                (content-start nil)
+                (content-end nil))
+
+            ;; Find #+begin_src line
+            (save-excursion
+              (when (re-search-backward "^[ \t]*#\\+begin_src" nil t)
+                (setq block-start (point))
+                (forward-line 1)
+                (setq content-start (point))))
+
+            ;; Find #+end_src line
+            (save-excursion
+              (when (re-search-forward "^[ \t]*#\\+end_src" nil t)
+                (beginning-of-line)
+                (setq content-end (point))
+                (setq block-end (line-end-position))))
+
+            (when (and content-start content-end (< content-start content-end))
+              ;; Replace content
+              (delete-region content-start content-end)
+              (goto-char content-start)
+              (insert new-content)
+              (unless (string-suffix-p "\n" new-content)
+                (insert "\n"))))
+
+          (message "Refreshed block from: %s" resolved-path))))))
 
 ;;;###autoload
 (defun org-directory-importer-import-update ()
