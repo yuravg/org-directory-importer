@@ -288,5 +288,128 @@
       (when (file-directory-p temp-dir)
         (delete-directory temp-dir t)))))
 
+;;; Skip-metadata (C-u) tests
+
+(ert-deftest test-import-file-skip-metadata-no-properties ()
+  "Import file with skip-metadata has no IMPORT_* properties."
+  (let ((temp-file (make-temp-file "test-file"))
+        (temp-org (make-temp-file "test-import-file" nil ".org")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert "content"))
+          (with-temp-buffer
+            (org-mode)
+            (set-visited-file-name temp-org t)
+            (let ((org-directory-importer-tangle-path-type 'absolute))
+              ;; Call with skip-metadata = t (C-u equivalent)
+              (org-directory-importer-import-file temp-file t))
+            ;; Verify heading was created
+            (goto-char (point-min))
+            (should (looking-at "\\* "))
+            ;; Verify NO IMPORT_* properties
+            (goto-char (point-min))
+            (should-not (search-forward "IMPORT_PATH" nil t))
+            (goto-char (point-min))
+            (should-not (search-forward "IMPORT_CHECKSUM" nil t))
+            (goto-char (point-min))
+            (should-not (search-forward "IMPORT_SIZE" nil t))
+            (goto-char (point-min))
+            (should-not (search-forward "IMPORT_MTIME" nil t))
+            ;; Verify source block is still present
+            (goto-char (point-min))
+            (should (search-forward "#+begin_src" nil t))
+            (should (search-forward "content" nil t))
+            (should (search-forward "#+end_src" nil t))))
+      (when (file-exists-p temp-file)
+        (delete-file temp-file))
+      (when (file-exists-p temp-org)
+        (delete-file temp-org)))))
+
+(ert-deftest test-import-file-skip-metadata-has-content ()
+  "Import with skip-metadata preserves language detection and tangle path."
+  (let ((temp-py (make-temp-file "test" nil ".py"))
+        (temp-org (make-temp-file "test-import-file" nil ".org")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-py
+            (insert "print('hello')\n"))
+          (with-temp-buffer
+            (org-mode)
+            (set-visited-file-name temp-org t)
+            (let ((org-directory-importer-tangle-path-type 'absolute))
+              (org-directory-importer-import-file temp-py t))
+            ;; Verify language detection and content
+            (goto-char (point-min))
+            (should (search-forward "#+begin_src python" nil t))
+            (should (search-forward "print('hello')" nil t))
+            (should (search-forward "#+end_src" nil t))
+            ;; Verify tangle path is set
+            (goto-char (point-min))
+            (should (search-forward ":tangle" nil t))))
+      (when (file-exists-p temp-py)
+        (delete-file temp-py))
+      (when (file-exists-p temp-org)
+        (delete-file temp-org)))))
+
+(ert-deftest test-import-file-skip-metadata-subheading ()
+  "Import file with skip-metadata as subheading has correct level."
+  (let ((temp-file (make-temp-file "test-file"))
+        (temp-org (make-temp-file "test-import-file" nil ".org")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert "content"))
+          (with-temp-buffer
+            (org-mode)
+            (set-visited-file-name temp-org t)
+            (insert "* Parent Heading\n")
+            (goto-char (point-min))
+            (org-end-of-line)
+            (let ((org-directory-importer-tangle-path-type 'absolute))
+              (org-directory-importer-import-file temp-file t))
+            ;; Should create level 2 heading with no properties block
+            (goto-char (point-min))
+            (should (search-forward "** " nil t))
+            (goto-char (point-min))
+            (should-not (search-forward ":PROPERTIES:" nil t))))
+      (when (file-exists-p temp-file)
+        (delete-file temp-file))
+      (when (file-exists-p temp-org)
+        (delete-file temp-org)))))
+
+(ert-deftest test-import-file-skip-metadata-roundtrip ()
+  "Import file with skip-metadata, tangle it, and verify content matches."
+  (let* ((temp-dir (make-temp-file "test-roundtrip-dir" t))
+         (original-file (expand-file-name "original.py" temp-dir))
+         (temp-org (expand-file-name "test.org" temp-dir))
+         (original-content "def greet():\n    return 'hello'\n"))
+    (unwind-protect
+        (progn
+          ;; Create original file
+          (with-temp-file original-file
+            (insert original-content))
+          ;; Import with skip-metadata into org buffer
+          (with-temp-buffer
+            (org-mode)
+            (set-visited-file-name temp-org t)
+            (let ((org-directory-importer-tangle-path-type 'absolute))
+              (org-directory-importer-import-file original-file t))
+            (write-file temp-org))
+          ;; Delete original to prove tangle works
+          (delete-file original-file)
+          ;; Tangle back
+          (with-current-buffer (find-file-noselect temp-org)
+            (org-babel-tangle)
+            (kill-buffer))
+          ;; Verify tangled file matches original content
+          (should (file-exists-p original-file))
+          (with-temp-buffer
+            (insert-file-contents original-file)
+            (should (equal (buffer-string) original-content))))
+      ;; Cleanup
+      (when (file-directory-p temp-dir)
+        (delete-directory temp-dir t)))))
+
 (provide 'test-import-file)
 ;;; test-import-file.el ends here
