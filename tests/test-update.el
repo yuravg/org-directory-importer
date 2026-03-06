@@ -576,6 +576,52 @@ No heading should be more than 1 level deeper than its predecessor."
       (delete-directory test-dir t)
       (kill-buffer org-buffer))))
 
+(ert-deftest test-update-from-child-heading ()
+  "Test that update works when point is on a child heading.
+The command should navigate up to the IMPORT_SOURCE heading,
+not just use the heading at point."
+  (let* ((test-dir (make-temp-file "test-child-heading-" t))
+         (org-buffer (generate-new-buffer "*test-child-heading*")))
+    (unwind-protect
+        (progn
+          ;; Create two files
+          (test-update--create-nested-dir-structure
+           test-dir '("sub/file1.txt" "sub/file2.txt"))
+
+          (with-current-buffer org-buffer
+            (org-mode)
+            (setq buffer-file-name (expand-file-name "test.org" test-dir))
+            (org-directory-importer-import test-dir)
+
+            ;; Get original checksum for file1.txt
+            (goto-char (point-min))
+            (re-search-forward "\\*\\*\\*\\* file1\\.txt")
+            (let ((orig-checksum (org-entry-get nil "IMPORT_CHECKSUM")))
+
+              ;; Modify file1.txt
+              (with-temp-file (expand-file-name "sub/file1.txt" test-dir)
+                (insert "Modified file1 content\n"))
+
+              ;; Run update from file2.txt heading (a sibling, NOT the root)
+              (goto-char (point-min))
+              (re-search-forward "\\*\\*\\*\\* file2\\.txt")
+              (beginning-of-line)
+              (org-directory-importer-import-update)
+
+              ;; Verify file1.txt was updated despite point being on file2
+              (goto-char (point-min))
+              (re-search-forward "\\*\\*\\*\\* file1\\.txt")
+              (should-not (string= orig-checksum
+                                   (org-entry-get nil "IMPORT_CHECKSUM")))
+
+              ;; Verify the content was actually updated
+              (goto-char (point-min))
+              (should (re-search-forward "Modified file1 content" nil t)))))
+
+      ;; Cleanup
+      (delete-directory test-dir t)
+      (kill-buffer org-buffer))))
+
 (provide 'test-update)
 
 ;;; test-update.el ends here

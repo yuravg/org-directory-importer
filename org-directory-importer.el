@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.3.0
+;; Version: 1.4.0
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
@@ -1049,7 +1049,12 @@ Reports statistics: modified, new, deleted, and unchanged files."
     (message "Updating import from: %s" import-root)
 
     (save-excursion
+      ;; Navigate to the heading that owns IMPORT_SOURCE (not a child
+      ;; that merely inherits it).  Without this, running the command
+      ;; from a child heading would scan only a partial subtree.
       (org-back-to-heading t)
+      (while (not (org-entry-get nil "IMPORT_SOURCE"))
+        (org-up-heading-safe))
       ;; Collect existing files: path → (checksum marker)
       (let ((existing (make-hash-table :test 'equal))
             (found-in-fs (make-hash-table :test 'equal)))
