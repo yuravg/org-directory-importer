@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks  -*- lexical-binding: t; -*-
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.5.1
+;; Version: 1.5.2
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "29.1") (org "9.0"))
@@ -1225,9 +1225,10 @@ Only searches direct children of current heading, not deeper descendants."
     (when (and (outline-next-heading)
                (> (org-current-level) parent-level))
       ;; We're now at a child heading
-      (let ((child-level (org-current-level)))
+      (let ((child-level (org-current-level))
+            (keep-searching t))
         ;; Search through siblings at this level
-        (while (and (not found)
+        (while (and (not found) keep-searching
                     (= (org-current-level) child-level))
           (when (and (looking-at org-complex-heading-regexp)
                      (string= (match-string 4) search-name))
@@ -1237,8 +1238,7 @@ Only searches direct children of current heading, not deeper descendants."
             (unless (and (outline-next-heading)
                          (>= (org-current-level) child-level))
               ;; No more siblings or moved to parent level
-              (setq found nil)
-              (cl-return))))))
+              (setq keep-searching nil))))))
 
     (unless found
       (goto-char start-pos))

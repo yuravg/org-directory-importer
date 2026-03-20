@@ -29,6 +29,7 @@
 (load (expand-file-name "test-import-file.el" (file-name-directory load-file-name)))
 (load (expand-file-name "test-prune-metadata.el" (file-name-directory load-file-name)))
 (load (expand-file-name "test-refresh-block.el" (file-name-directory load-file-name)))
+(load (expand-file-name "test-helpers.el" (file-name-directory load-file-name)))
 
 ;; Run all tests when called from batch mode
 (when noninteractive
