@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks  -*- lexical-binding: t; -*-
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.4.1
+;; Version: 1.4.2
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
@@ -151,6 +151,7 @@ Supports wildcards (* and ?) and literal names."
     ("v"         . "verilog")
     ("do"        . "tcl")
     ("tcl"       . "tcl")
+    ("toml"      . "toml")
     ("ts"        . "typescript")
     ("tsx"       . "typescript")
     ("txt"       . "text")
