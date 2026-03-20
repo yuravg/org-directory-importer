@@ -1,175 +1,104 @@
-.PHONY: help test test-all test-interactive test-gitignore test-binary test-language \
-        test-roundtrip test-edge-cases test-update test-import-file test-refresh-block compile lint checkdoc ci clean
+.PHONY: help compile test checkdoc lint ci clean
 
 .DEFAULT_GOAL := help
 
 # Package information
-PACKAGE := org-directory-importer.el
-VERSION := $(shell perl -ne 'if (/^;;\s*Version:\s*(\S+)/) {print $$1; last}' $(PACKAGE))
+PACKAGE := org-directory-importer
+VERSION := $(shell perl -ne 'if (/^;;\s*Version:\s*(\S+)/) {print $$1; last}' $(PACKAGE).el)
 TEST_COUNT := $(shell grep -ch 'ert-deftest' tests/*.el 2>/dev/null | awk '{s+=$$1} END{print s+0}')
-TEST_FILES := tests/test-gitignore.el \
-              tests/test-binary-detection.el \
-              tests/test-language-detection.el \
-              tests/test-roundtrip.el \
-              tests/test-edge-cases.el \
-              tests/test-update.el \
-              tests/test-import-file.el \
-              tests/test-refresh-block.el
-
-# Count ert-deftest forms in a test file
-# Usage: $(call test-count,tests/test-foo.el)
-test-count = $$(grep -c 'ert-deftest' $(1))
 
 # Emacs command
 EMACS ?= emacs
-BATCH := $(EMACS) -batch
-BATCH_ERT_PKG := $(EMACS) -batch -l ert -l $(PACKAGE)
+BATCH := $(EMACS) --batch
 
-#------------------------------------------------------------------------------
-# Help
-#------------------------------------------------------------------------------
+TEST_FILES := $(PACKAGE).el $(wildcard tests/*.el)
 
 help:
-	@echo "org-directory-importer v$(VERSION) - Makefile targets"
+	@echo "$(PACKAGE) v$(VERSION) - Makefile targets"
 	@echo ""
-	@printf "Testing: (%s tests total)\n" "$(TEST_COUNT)"
-	@echo "  make test              Run all tests via test-suite.el (fast)"
-	@echo "  make test-all          Run all individual test files (verbose)"
-	@echo "  make test-interactive  Run tests in interactive Emacs"
-	@echo ""
-	@echo "Individual test files:"
-	@printf "  make %-18s Run %-28s (%s tests)\n" \
-	  "test-gitignore"     "gitignore pattern tests"       "$(call test-count,tests/test-gitignore.el)" \
-	  "test-binary"        "binary detection tests"        "$(call test-count,tests/test-binary-detection.el)" \
-	  "test-language"      "language mapping tests"         "$(call test-count,tests/test-language-detection.el)" \
-	  "test-roundtrip"     "import/tangle roundtrip test"   "$(call test-count,tests/test-roundtrip.el)" \
-	  "test-edge-cases"    "edge case tests"               "$(call test-count,tests/test-edge-cases.el)" \
-	  "test-update"        "incremental update tests"      "$(call test-count,tests/test-update.el)" \
-	  "test-import-file"   "single file import tests"      "$(call test-count,tests/test-import-file.el)" \
-	  "test-refresh-block" "refresh-block tests"           "$(call test-count,tests/test-refresh-block.el)"
+	@echo "Development:"
+	@echo "  make compile       Byte-compile the package"
+	@echo "  make clean         Remove generated files"
 	@echo ""
 	@echo "Quality checks:"
-	@echo "  make compile           Byte-compile the package"
-	@echo "  make lint              Run package-lint checks"
-	@echo "  make checkdoc          Check documentation strings"
+	@echo "  make test          Run ERT unit tests ($(TEST_COUNT) tests)"
+	@echo "  make checkdoc      Check documentation strings"
+	@echo "  make lint          Run package-lint (requires network)"
 	@echo ""
-	@echo "CI/CD:"
-	@echo "  make ci                Run all checks (compile + lint + checkdoc + test)"
-	@echo ""
-	@echo "Maintenance:"
-	@echo "  make clean             Remove byte-compiled files"
+	@echo "CI:"
+	@echo "  make ci            Run all"
 	@echo ""
 
-help1:
-	@echo "TEST_COUNT = $(TEST_COUNT)"
-
-#------------------------------------------------------------------------------
-# Testing
-#------------------------------------------------------------------------------
-
-# Run all tests via test-suite.el (fastest method)
-test:
-	@echo "Running all tests via test-suite.el..."
-	@$(BATCH) -l ert -l tests/test-suite.el
-
-# Run all individual test files (more verbose output)
-test-all: test-gitignore test-binary test-language test-roundtrip test-edge-cases test-update test-import-file test-refresh-block
-	@echo ""
-	@echo "✓ All test suites passed!"
-
-# Individual test targets
-test-gitignore:
-	@echo "Running gitignore tests..."
-	@$(BATCH_ERT_PKG) -l tests/test-gitignore.el -f ert-run-tests-batch-and-exit
-
-test-binary:
-	@echo "Running binary detection tests..."
-	@$(BATCH_ERT_PKG) -l tests/test-binary-detection.el -f ert-run-tests-batch-and-exit
-
-test-language:
-	@echo "Running language detection tests..."
-	@$(BATCH_ERT_PKG) -l tests/test-language-detection.el -f ert-run-tests-batch-and-exit
-
-test-roundtrip:
-	@echo "Running roundtrip tests..."
-	@$(BATCH_ERT_PKG) -l tests/test-roundtrip.el -f ert-run-tests-batch-and-exit
-
-test-edge-cases:
-	@echo "Running edge case tests..."
-	@$(BATCH_ERT_PKG) -l tests/test-edge-cases.el -f ert-run-tests-batch-and-exit
-
-test-update:
-	@echo "Running update tests..."
-	@$(BATCH_ERT_PKG) -l tests/test-update.el -f ert-run-tests-batch-and-exit
-
-test-import-file:
-	@echo "Running import-file tests..."
-	@$(BATCH_ERT_PKG) -l tests/test-import-file.el -f ert-run-tests-batch-and-exit
-
-test-refresh-block:
-	@echo "Running refresh-block tests..."
-	@$(BATCH_ERT_PKG) -l tests/test-refresh-block.el -f ert-run-tests-batch-and-exit
-
-# Run tests interactively in Emacs
-test-interactive:
-	@echo "Starting interactive test session..."
-	@$(EMACS) -l tests/test-suite.el
-
-#------------------------------------------------------------------------------
-# Quality Checks
-#------------------------------------------------------------------------------
-
-# Byte-compile the package
-compile:
+$(PACKAGE).elc: $(PACKAGE).el
 	@echo "Byte-compiling $(PACKAGE)..."
-	@$(BATCH) -f batch-byte-compile $(PACKAGE)
+	@$(BATCH) --eval "(setq byte-compile-error-on-warn t)" \
+	  -f batch-byte-compile $(PACKAGE).el
 	@echo "✓ Compilation successful"
 
-# Run package-lint checks
-lint:
+compile: $(PACKAGE).elc
+
+test: $(PACKAGE).elc
+	@if [ -f tests/test-suite.el ]; then \
+		$(BATCH) -l ert -l tests/test-suite.el; \
+	else \
+		echo "No tests found."; \
+	fi
+
+checkdoc: $(PACKAGE).elc
+	@echo "Running checkdoc on $(PACKAGE).el..."
+	@$(BATCH) --eval "\
+	(progn \
+	  (require 'checkdoc) \
+	  (let ((checkdoc-diagnostic-buffer \"*chk*\") \
+	        (issues 0) (output \"\")) \
+	    (checkdoc-file \"$(PACKAGE).el\") \
+	    (when (get-buffer \"*chk*\") \
+	      (with-current-buffer \"*chk*\" \
+	        (unless (zerop (buffer-size)) \
+	          (setq issues (count-lines (point-min) (point-max))) \
+	          (setq output (buffer-string))))) \
+	    (when (get-buffer \"*Warnings*\") \
+	      (with-current-buffer \"*Warnings*\" \
+	        (unless (zerop (buffer-size)) \
+	          (setq issues (+ issues (count-lines (point-min) (point-max)))) \
+	          (setq output (concat output (buffer-string)))))) \
+	    (if (> issues 0) \
+	        (progn \
+	          (message \"checkdoc: %d issue(s) found in $(PACKAGE).el:\" issues) \
+	          (message \"%s\" output) \
+	          (kill-emacs 1)) \
+	      (message \"checkdoc: $(PACKAGE).el OK (no issues)\"))))"
+
+lint: $(PACKAGE).elc
 	@echo "Running package-lint checks..."
 	@$(BATCH) \
 	  --eval "(require 'package)" \
 	  --eval "(push '(\"melpa\" . \"https://melpa.org/packages/\") package-archives)" \
 	  --eval "(package-initialize)" \
-	  --eval "(unless (package-installed-p 'package-lint) \
-	            (package-refresh-contents) \
-	            (package-install 'package-lint))" \
+	  --eval "(condition-case err \
+	            (unless (package-installed-p 'package-lint) \
+	              (package-refresh-contents) \
+	              (package-install 'package-lint)) \
+	            (error \
+	              (message \"ERROR: Failed to install package-lint: %s\" (error-message-string err)) \
+	              (message \"Hint: check your network connection and MELPA availability.\") \
+	              (kill-emacs 1)))" \
 	  --eval "(require 'package-lint)" \
-	  -f package-lint-batch-and-exit $(PACKAGE)
+	  -f package-lint-batch-and-exit $(PACKAGE).el
+	@echo "✓ package-lint passed"
 
-# Check documentation strings
-checkdoc:
-	@echo "Running checkdoc..."
-	@$(BATCH) --eval "\
-	(progn \
-	  (require 'checkdoc) \
-	  (let ((checkdoc-diagnostic-buffer \"*chk*\")) \
-	    (checkdoc-file \"$(PACKAGE)\") \
-	    (when (get-buffer \"*chk*\") \
-	      (with-current-buffer \"*chk*\" \
-	        (unless (zerop (buffer-size)) \
-	          (message \"%s\" (buffer-string)) \
-	          (kill-emacs 1))))))"
 
-#------------------------------------------------------------------------------
-# CI/CD
-#------------------------------------------------------------------------------
-
-# Run all quality checks (suitable for CI)
-ci: clean compile lint checkdoc test
+ci: clean compile checkdoc lint test
 	@echo ""
 	@echo "✓ All CI checks passed!"
 	@echo "  - Byte compilation: OK"
-	@echo "  - Documentation: OK"
+	@echo "  - Documentation (checkdoc): OK"
+	@echo "  - Lint (package-lint): OK"
 	@echo "  - Tests: $(TEST_COUNT)/$(TEST_COUNT) passing"
+	@echo ""
+	@echo "Package $(PACKAGE) v$(VERSION) - ready for release"
 
-#------------------------------------------------------------------------------
-# Maintenance
-#------------------------------------------------------------------------------
-
-# Clean byte-compiled files
 clean:
-	@echo "Cleaning byte-compiled files..."
-	@find . -name "*.elc" -delete
+	@echo "Cleaning generated files..."
+	@rm -f *.elc *~
 	@echo "✓ Clean complete"
