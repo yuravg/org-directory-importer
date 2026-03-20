@@ -1,7 +1,7 @@
-;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks
+;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks  -*- lexical-binding: t; -*-
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.4.0
+;; Version: 1.4.1
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
@@ -202,8 +202,8 @@ are preserved as headings without content."
 
 (defcustom org-directory-importer-tangle-path-type 'relative
   "Type of path to use in :tangle properties.
-- 'relative: Use relative paths starting with './' (default)
-- 'absolute: Use absolute paths to files"
+- `relative': Use relative paths starting with \\='./' (default)
+- `absolute': Use absolute paths to files"
   :type '(choice (const :tag "Relative paths (./...)" relative)
                  (const :tag "Absolute paths (/...)" absolute))
   :group 'org-directory-importer)
@@ -219,6 +219,14 @@ Format: ((base-directory . patterns-list) ...)
 The cache persists across imports for performance.  Use
 `org-directory-importer-clear-gitignore-cache' after modifying
 .gitignore files to force re-reading.")
+
+(defvar org-directory-importer--visited-directories nil
+  "Set of canonical paths of directories being processed.
+Used to detect symlink cycles during recursive traversal.")
+
+(defvar org-directory-importer--current-org-file nil
+  "Canonical path of the Org file being imported into.
+Used to prevent importing the Org file into itself.")
 
 (defun org-directory-importer--get-global-gitignore ()
   "Return path to global Git ignore file, or nil if not configured."
@@ -440,14 +448,14 @@ Returns the language string or \\='text as fallback."
   (let ((size (org-directory-importer--get-file-size file-path)))
     (and size (> size org-directory-importer-max-file-size))))
 
-(defun org-directory-importer--get-tangle-path (file-path base-directory)
+(defun org-directory-importer--get-tangle-path (file-path _base-directory)
   "Return tangle path for FILE-PATH based on user configuration.
-If `org-directory-importer-tangle-path-type' is 'relative, returns
+If `org-directory-importer-tangle-path-type' is `relative', returns
 relative path from current Org buffer's directory to FILE-PATH.
-If 'absolute, returns the absolute path to FILE-PATH.
+If `absolute', returns the absolute path to FILE-PATH.
 
 For relative paths, the path is calculated relative to the Org file's
-directory, not BASE-DIRECTORY. This ensures that tangling will write
+directory, not BASE-DIRECTORY.  This ensures that tangling will write
 files back to their original locations, even when importing from
 relative paths like ../../other-dir/."
   (if (eq org-directory-importer-tangle-path-type 'absolute)
@@ -566,16 +574,8 @@ Returns t if file was processed successfully, nil otherwise."
              (a-is-dir t)
              (b-is-dir nil))))))
 
-(defvar org-directory-importer--visited-directories nil
-  "Set of canonical paths of directories being processed.
-Used to detect symlink cycles during recursive traversal.")
-
-(defvar org-directory-importer--current-org-file nil
-  "Canonical path of the Org file being imported into.
-Used to prevent importing the Org file into itself.")
-
 (defun org-directory-importer--is-symlink-cycle-p (directory visited-dirs)
-  "Return non-nil if DIRECTORY creates a cycle in VISITED-DIRS.
+  "Return non-nil if DIRECTORY create a cycle in VISITED-DIRS.
 DIRECTORY is resolved to its canonical path and checked against
 the set of already-visited canonical paths."
   (condition-case nil
@@ -612,7 +612,7 @@ Returns the total number of files processed."
 
           (with-temp-buffer
             (dolist (entry sorted-entries)
-              (condition-case entry-err
+              (condition-case _entry-err
                   (cond
                    ;; Process regular files (including symlinks to files)
                    ((file-regular-p entry)
@@ -667,7 +667,7 @@ Returns the total number of files processed."
   "Clear cached gitignore patterns to force re-reading.
 
 USAGE:
-  M-x org-directory-importer-clear-gitignore-cache
+  \\[org-directory-importer-clear-gitignore-cache]
 
 Use this command after modifying .gitignore files (local or global)
 to ensure the next import uses current patterns.
@@ -709,9 +709,9 @@ Signals user-error if validation fails."
   "Import DIRECTORY structure into current Org buffer.
 
 USAGE:
-  M-x org-directory-importer-import RET /path/to/directory RET
+  \\[org-directory-importer-import] /path/to/directory RET
 
-With \\[universal-argument] prefix (C-u): Import without metadata for plain content.
+With \\[universal-argument] prefix: Import without metadata for plain content.
 Without prefix: Import with full change-tracking metadata.
 
 When importing with metadata (default):
@@ -769,7 +769,7 @@ block with :tangle property that can be tangled back to recreate files."
 (defun org-directory-importer-import-plain (directory)
   "Import DIRECTORY structure without metadata or change tracking.
 
-DEPRECATED: Use `C-u M-x org-directory-importer-import' instead.
+DEPRECATED: Use `C-u \\[org-directory-importer-import]' instead.
 
 This function is now a wrapper around `org-directory-importer-import'
 with the SKIP-METADATA argument set to t.
@@ -788,9 +788,9 @@ be updated with `org-directory-importer-import-update'."
   "Import FILE unconditionally into current Org buffer at point.
 
 USAGE:
-  M-x org-directory-importer-import-file RET /path/to/file RET
+  \\[org-directory-importer-import-file] /path/to/file RET
 
-With \\[universal-argument] prefix (C-u): Import without metadata for plain content.
+With \\[universal-argument] prefix: Import without metadata for plain content.
 Without prefix: Import with full change-tracking metadata.
 
 When importing with metadata (default):
@@ -880,7 +880,7 @@ Unlike directory import commands, this function:
   "Remove all IMPORT_* metadata properties from current Org buffer.
 
 USAGE:
-  M-x org-directory-importer-prune-metadata RET
+  \\[org-directory-importer-prune-metadata]
 
 Removes package-specific properties from all headings in the buffer:
 - IMPORT_SOURCE (directory-level)
@@ -923,7 +923,7 @@ on the affected entries."
   "Refresh source block at point from its tangle target file.
 
 USAGE:
-  M-x org-directory-importer-refresh-block RET
+  \\[org-directory-importer-refresh-block]
 
 Reads the file specified in the :tangle header of the current source
 block and updates the block content.  If the containing heading has
@@ -982,22 +982,19 @@ Point must be inside a source block with a :tangle path."
               (org-back-to-heading t)
               (org-set-property "IMPORT_CHECKSUM" new-checksum)
               (org-set-property "IMPORT_SIZE"
-                               (number-to-string (file-attribute-size attrs)))
+                                (number-to-string (file-attribute-size attrs)))
               (org-set-property "IMPORT_MTIME"
-                               (format-time-string "%Y-%m-%d %H:%M:%S"
-                                                  (file-attribute-modification-time attrs)))))
+                                (format-time-string "%Y-%m-%d %H:%M:%S"
+                                                    (file-attribute-modification-time attrs)))))
 
           ;; Find and replace source block content
           ;; We need to find the current block's boundaries
-          (let ((block-start nil)
-                (block-end nil)
-                (content-start nil)
+          (let ((content-start nil)
                 (content-end nil))
 
             ;; Find #+begin_src line
             (save-excursion
               (when (re-search-backward "^[ \t]*#\\+begin_src" nil t)
-                (setq block-start (point))
                 (forward-line 1)
                 (setq content-start (point))))
 
@@ -1005,8 +1002,7 @@ Point must be inside a source block with a :tangle path."
             (save-excursion
               (when (re-search-forward "^[ \t]*#\\+end_src" nil t)
                 (beginning-of-line)
-                (setq content-end (point))
-                (setq block-end (line-end-position))))
+                (setq content-end (point))))
 
             (when (and content-start content-end (< content-start content-end))
               ;; Replace content
@@ -1020,10 +1016,10 @@ Point must be inside a source block with a :tangle path."
 
 ;;;###autoload
 (defun org-directory-importer-import-update ()
-  "Update existing import by detecting changes.
+  "Update existing import by detecting change.
 
 USAGE:
-  M-x org-directory-importer-import-update RET
+  \\[org-directory-importer-import-update]
 
 Detects and updates modified files, adds new files, and reports deleted files
 from a previously imported directory structure.  Must be run from within an
@@ -1095,7 +1091,7 @@ STATS is a plist with :modified :new :deleted :unchanged counters."
              (sorted-entries (org-directory-importer--sort-directory-entries entries)))
 
         (dolist (entry sorted-entries)
-          (condition-case entry-err
+          (condition-case _entry-err
               (let ((rel-path (file-relative-name entry base-dir)))
                 (cond
                  ;; Process subdirectories recursively
@@ -1121,8 +1117,8 @@ STATS is a plist with :modified :new :deleted :unchanged counters."
                       (let* ((old-checksum (car record))
                              (marker (cadr record))
                              (new-content (with-temp-buffer
-                                           (insert-file-contents entry)
-                                           (buffer-string)))
+                                            (insert-file-contents entry)
+                                            (buffer-string)))
                              (new-checksum (secure-hash 'sha256 new-content)))
 
                         (if (equal old-checksum new-checksum)
@@ -1146,7 +1142,7 @@ STATS is a plist with :modified :new :deleted :unchanged counters."
     (error
      (message "Error processing directory %s: %s" dir (error-message-string err)))))
 
-(defun org-directory-importer--update-block (marker file-path base-dir new-content new-checksum)
+(defun org-directory-importer--update-block (marker file-path _base-dir new-content new-checksum)
   "Update source block at MARKER with content from FILE-PATH.
 BASE-DIR is the import root directory.
 NEW-CONTENT is the file content string.
@@ -1159,8 +1155,8 @@ NEW-CHECKSUM is the SHA256 hash of the new content."
       (org-set-property "IMPORT_CHECKSUM" new-checksum)
       (org-set-property "IMPORT_SIZE" (number-to-string (file-attribute-size attrs)))
       (org-set-property "IMPORT_MTIME"
-                       (format-time-string "%Y-%m-%d %H:%M:%S"
-                                          (file-attribute-modification-time attrs)))
+                        (format-time-string "%Y-%m-%d %H:%M:%S"
+                                            (file-attribute-modification-time attrs)))
 
       ;; Find and replace source block content
       (when (re-search-forward "^[ \t]*#\\+begin_src" (org-entry-end-position) t)
@@ -1185,8 +1181,7 @@ This function finds the appropriate parent directory heading and inserts
 the new file under it."
   (let* ((rel-path (file-relative-name file-path base-dir))
          (path-parts (split-string rel-path "/"))
-         (dir-parts (butlast path-parts))
-         (filename (car (last path-parts))))
+         (dir-parts (butlast path-parts)))
 
     (save-excursion
       ;; Navigate to import root heading (has IMPORT_SOURCE property)
@@ -1244,7 +1239,7 @@ Only searches direct children of current heading, not deeper descendants."
           (unless found
             ;; Move to next sibling (stay at same level)
             (unless (and (outline-next-heading)
-                        (>= (org-current-level) child-level))
+                         (>= (org-current-level) child-level))
               ;; No more siblings or moved to parent level
               (setq found nil)
               (cl-return))))))
