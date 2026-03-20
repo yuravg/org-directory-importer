@@ -115,5 +115,49 @@
             (org-directory-importer--validate-import-preconditions tmp-dir)))
       (delete-directory tmp-dir))))
 
+;;; --- transient menus ---
+
+(ert-deftest test-transient-menu-defined ()
+  "Main transient menu should be defined."
+  (should (fboundp 'org-directory-importer-menu)))
+
+(ert-deftest test-transient-import-menu-defined ()
+  "Import transient menu should be defined."
+  (should (fboundp 'org-directory-importer-import-menu)))
+
+(ert-deftest test-transient-manage-menu-defined ()
+  "Manage transient menu should be defined."
+  (should (fboundp 'org-directory-importer-manage-menu)))
+
+;;; --- minor mode ---
+
+(ert-deftest test-minor-mode-activates-in-org ()
+  "Minor mode should activate in Org-mode buffers."
+  (with-temp-buffer
+    (org-mode)
+    (org-directory-importer-mode 1)
+    (should org-directory-importer-mode)))
+
+(ert-deftest test-minor-mode-rejects-non-org ()
+  "Minor mode should reject activation outside Org-mode."
+  (with-temp-buffer
+    (fundamental-mode)
+    (should-error
+     (org-directory-importer-mode 1)
+     :type 'user-error)))
+
+(ert-deftest test-minor-mode-deactivates ()
+  "Minor mode should deactivate cleanly."
+  (with-temp-buffer
+    (org-mode)
+    (org-directory-importer-mode 1)
+    (org-directory-importer-mode -1)
+    (should-not org-directory-importer-mode)))
+
+(ert-deftest test-minor-mode-keymap-has-binding ()
+  "Minor mode keymap should have C-c i bound."
+  (should (eq (lookup-key org-directory-importer-mode-map (kbd "C-c i"))
+              'org-directory-importer-menu)))
+
 (provide 'test-helpers)
 ;;; test-helpers.el ends here

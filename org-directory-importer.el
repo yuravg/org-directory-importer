@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks  -*- lexical-binding: t; -*-
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.5.2
+;; Version: 1.6.0
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "29.1") (org "9.0"))
@@ -56,9 +56,30 @@
 ;;   Clear cached gitignore patterns to force re-reading.
 ;;   Use this after modifying .gitignore files.
 ;;
+;; TRANSIENT MENUS:
+;;
+;; `org-directory-importer-menu'
+;;   Main transient menu consolidating all commands and options.
+;;
+;; `org-directory-importer-import-menu'
+;;   Import menu with toggleable options (path type, binary detection,
+;;   local/global gitignore).
+;;
+;; `org-directory-importer-manage-menu'
+;;   Management menu (update, refresh, prune, clear cache).
+;;
+;; MINOR MODE:
+;;
+;; `org-directory-importer-mode'
+;;   Activates the minor mode keymap in Org buffers.
+;;   Binds C-c i to `org-directory-importer-menu'.
+;;   Enable globally: (add-hook 'org-mode-hook #'org-directory-importer-mode)
+;;
 ;; QUICK START:
 ;;   M-x org-directory-importer-import RET
 ;;   Select a directory, and the structure will be inserted at point.
+;;
+;;   Or enable the minor mode and use C-c i for the transient menu.
 ;;
 ;; FILTERING:
 ;; Files are excluded through three complementary layers:
@@ -77,6 +98,31 @@
 (require 'org)
 (require 'seq)
 (require 'cl-lib)
+(require 'transient)
+
+;;; Minor mode
+
+(defvar org-directory-importer-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c i") #'org-directory-importer-menu)
+    map)
+  "Keymap for `org-directory-importer-mode'.
+\\{org-directory-importer-mode-map}")
+
+;;;###autoload
+(define-minor-mode org-directory-importer-mode
+  "Minor mode for org-directory-importer commands.
+Activates the `org-directory-importer-mode-map' keymap in Org buffers,
+giving access to import, update, and management commands.
+
+Enable globally in Org buffers:
+  (add-hook \\='org-mode-hook \\=#\\='org-directory-importer-mode)"
+  :lighter " ODI"
+  :keymap org-directory-importer-mode-map
+  (when (and org-directory-importer-mode
+             (not (derived-mode-p 'org-mode)))
+    (org-directory-importer-mode -1)
+    (user-error "Org-directory-importer-mode only works in Org-mode buffers")))
 
 ;;; Customization
 
@@ -1243,6 +1289,85 @@ Only searches direct children of current heading, not deeper descendants."
     (unless found
       (goto-char start-pos))
     found))
+
+;;; Transient menus
+
+(transient-define-infix org-directory-importer--infix-tangle-path-type ()
+  "Toggle tangle path type between relative and absolute."
+  :class 'transient-lisp-variable
+  :variable 'org-directory-importer-tangle-path-type
+  :reader (lambda (_prompt _initial-input _history)
+            (if (eq org-directory-importer-tangle-path-type 'relative)
+                'absolute
+              'relative))
+  :description (lambda ()
+                 (format "Tangle path type: %s"
+                         org-directory-importer-tangle-path-type)))
+
+(transient-define-infix org-directory-importer--infix-detect-binary ()
+  "Toggle binary file detection."
+  :class 'transient-lisp-variable
+  :variable 'org-directory-importer-detect-binary-files
+  :reader (lambda (_prompt _initial-input _history)
+            (not org-directory-importer-detect-binary-files))
+  :description (lambda ()
+                 (format "Detect binary files: %s"
+                         (if org-directory-importer-detect-binary-files "yes" "no"))))
+
+(transient-define-infix org-directory-importer--infix-gitignore-local ()
+  "Toggle local gitignore respect."
+  :class 'transient-lisp-variable
+  :variable 'org-directory-importer-respect-gitignore-local
+  :reader (lambda (_prompt _initial-input _history)
+            (not org-directory-importer-respect-gitignore-local))
+  :description (lambda ()
+                 (format "Respect local .gitignore: %s"
+                         (if org-directory-importer-respect-gitignore-local "yes" "no"))))
+
+(transient-define-infix org-directory-importer--infix-gitignore-global ()
+  "Toggle global gitignore respect."
+  :class 'transient-lisp-variable
+  :variable 'org-directory-importer-respect-gitignore-global
+  :reader (lambda (_prompt _initial-input _history)
+            (not org-directory-importer-respect-gitignore-global))
+  :description (lambda ()
+                 (format "Respect global gitignore: %s"
+                         (if org-directory-importer-respect-gitignore-global "yes" "no"))))
+
+;;;###autoload (autoload 'org-directory-importer-import-menu "org-directory-importer" nil t)
+(transient-define-prefix org-directory-importer-import-menu ()
+  "Import commands for org-directory-importer."
+  ["Options"
+   (org-directory-importer--infix-tangle-path-type)
+   (org-directory-importer--infix-detect-binary)
+   (org-directory-importer--infix-gitignore-local)
+   (org-directory-importer--infix-gitignore-global)]
+  ["Import"
+   ("d" "Import directory" org-directory-importer-import)
+   ("f" "Import file" org-directory-importer-import-file)])
+
+;;;###autoload (autoload 'org-directory-importer-manage-menu "org-directory-importer" nil t)
+(transient-define-prefix org-directory-importer-manage-menu ()
+  "Management commands for org-directory-importer."
+  ["Actions"
+   ("u" "Update import" org-directory-importer-import-update)
+   ("r" "Refresh block at point" org-directory-importer-refresh-block)
+   ("p" "Prune metadata" org-directory-importer-prune-metadata)
+   ("c" "Clear gitignore cache" org-directory-importer-clear-gitignore-cache)])
+
+;;;###autoload (autoload 'org-directory-importer-menu "org-directory-importer" nil t)
+(transient-define-prefix org-directory-importer-menu ()
+  "Main menu for org-directory-importer."
+  ["Import"
+   ("d" "Import directory" org-directory-importer-import)
+   ("f" "Import file" org-directory-importer-import-file)]
+  ["Manage"
+   ("u" "Update import" org-directory-importer-import-update)
+   ("r" "Refresh block at point" org-directory-importer-refresh-block)
+   ("p" "Prune metadata" org-directory-importer-prune-metadata)
+   ("c" "Clear gitignore cache" org-directory-importer-clear-gitignore-cache)]
+  ["Options"
+   ("T" "Import options..." org-directory-importer-import-menu)])
 
 (provide 'org-directory-importer)
 
