@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks  -*- lexical-binding: t; -*-
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.5.0
+;; Version: 1.5.1
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "29.1") (org "9.0"))
@@ -918,6 +918,41 @@ on the affected entries."
                  count-entries (if (= count-entries 1) "y" "ies"))
       (message "No IMPORT_* properties found in buffer"))))
 
+(defun org-directory-importer--replace-src-block-content (new-content)
+  "Replace the content of the source block surrounding point with NEW-CONTENT.
+Point must be inside a source block.  Searches backward for #+begin_src
+and forward for #+end_src, then replaces everything between them."
+  (let ((content-start nil)
+        (content-end nil))
+    (save-excursion
+      (when (re-search-backward "^[ \t]*#\\+begin_src" nil t)
+        (forward-line 1)
+        (setq content-start (point))))
+    (save-excursion
+      (when (re-search-forward "^[ \t]*#\\+end_src" nil t)
+        (beginning-of-line)
+        (setq content-end (point))))
+    (when (and content-start content-end (< content-start content-end))
+      (delete-region content-start content-end)
+      (goto-char content-start)
+      (insert new-content)
+      (unless (string-suffix-p "\n" new-content)
+        (insert "\n")))))
+
+(defun org-directory-importer--update-file-metadata (checksum attrs)
+  "Update IMPORT_* metadata properties on current heading.
+CHECKSUM is the new SHA-256 hash.  ATTRS is the result of `file-attributes'.
+Only updates if the heading already has IMPORT_CHECKSUM property."
+  (save-excursion
+    (when (and (ignore-errors (org-back-to-heading t))
+               (org-entry-get nil "IMPORT_CHECKSUM"))
+      (org-set-property "IMPORT_CHECKSUM" checksum)
+      (org-set-property "IMPORT_SIZE"
+                        (number-to-string (file-attribute-size attrs)))
+      (org-set-property "IMPORT_MTIME"
+                        (format-time-string "%Y-%m-%d %H:%M:%S"
+                                            (file-attribute-modification-time attrs))))))
+
 ;;;###autoload
 (defun org-directory-importer-refresh-block ()
   "Refresh source block at point from its tangle target file.
@@ -968,49 +1003,10 @@ Point must be inside a source block with a :tangle path."
                               (insert-file-contents resolved-path)
                               (buffer-string)))
                (new-checksum (secure-hash 'sha256 new-content))
-               (attrs (file-attributes resolved-path))
-               (has-metadata nil))
+               (attrs (file-attributes resolved-path)))
 
-          ;; Check if heading has IMPORT_* metadata
-          (save-excursion
-            (when (ignore-errors (org-back-to-heading t))
-              (setq has-metadata (org-entry-get nil "IMPORT_CHECKSUM"))))
-
-          ;; Update metadata if present
-          (when has-metadata
-            (save-excursion
-              (org-back-to-heading t)
-              (org-set-property "IMPORT_CHECKSUM" new-checksum)
-              (org-set-property "IMPORT_SIZE"
-                                (number-to-string (file-attribute-size attrs)))
-              (org-set-property "IMPORT_MTIME"
-                                (format-time-string "%Y-%m-%d %H:%M:%S"
-                                                    (file-attribute-modification-time attrs)))))
-
-          ;; Find and replace source block content
-          ;; We need to find the current block's boundaries
-          (let ((content-start nil)
-                (content-end nil))
-
-            ;; Find #+begin_src line
-            (save-excursion
-              (when (re-search-backward "^[ \t]*#\\+begin_src" nil t)
-                (forward-line 1)
-                (setq content-start (point))))
-
-            ;; Find #+end_src line
-            (save-excursion
-              (when (re-search-forward "^[ \t]*#\\+end_src" nil t)
-                (beginning-of-line)
-                (setq content-end (point))))
-
-            (when (and content-start content-end (< content-start content-end))
-              ;; Replace content
-              (delete-region content-start content-end)
-              (goto-char content-start)
-              (insert new-content)
-              (unless (string-suffix-p "\n" new-content)
-                (insert "\n"))))
+          (org-directory-importer--update-file-metadata new-checksum attrs)
+          (org-directory-importer--replace-src-block-content new-content)
 
           (message "Refreshed block from: %s" resolved-path))))))
 
