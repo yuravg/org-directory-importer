@@ -1,10 +1,10 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks  -*- lexical-binding: t; -*-
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.4.2
+;; Version: 1.5.0
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
-;; Package-Requires: ((emacs "27.1") (org "9.0"))
+;; Package-Requires: ((emacs "29.1") (org "9.0"))
 
 ;;; Commentary:
 
@@ -480,6 +480,21 @@ relative paths like ../../other-dir/."
    ((> size 1024) (format "%.1fKB" (/ size 1024.0)))
    (t (format "%dB" size))))
 
+(defun org-directory-importer--insert-file-properties (path checksum attrs)
+  "Insert IMPORT_* property drawer for a file entry.
+PATH is the value for IMPORT_PATH (relative path or filename).
+CHECKSUM is the SHA-256 hash of file content.
+ATTRS is the result of `file-attributes' for the file."
+  (insert ":PROPERTIES:\n")
+  (insert (format ":IMPORT_PATH: %s\n" path))
+  (insert (format ":IMPORT_CHECKSUM: %s\n" checksum))
+  (insert (format ":IMPORT_SIZE: %s\n"
+                  (number-to-string (file-attribute-size attrs))))
+  (insert (format ":IMPORT_MTIME: %s\n"
+                  (format-time-string "%Y-%m-%d %H:%M:%S"
+                                      (file-attribute-modification-time attrs))))
+  (insert ":END:\n"))
+
 (defun org-directory-importer--insert-file-content (file-path header-level base-directory &optional skip-metadata)
   "Insert FILE-PATH as an Org header with Babel source block at HEADER-LEVEL.
 BASE-DIRECTORY is used to calculate relative paths for tangling.
@@ -529,15 +544,7 @@ Returns t if file was processed successfully, nil otherwise."
 
             ;; Add properties for change tracking (unless skip-metadata)
             (unless skip-metadata
-              (insert ":PROPERTIES:\n")
-              (insert (format ":IMPORT_PATH: %s\n" rel-path))
-              (insert (format ":IMPORT_CHECKSUM: %s\n" checksum))
-              (insert (format ":IMPORT_SIZE: %s\n"
-                              (number-to-string (file-attribute-size attrs))))
-              (insert (format ":IMPORT_MTIME: %s\n"
-                              (format-time-string "%Y-%m-%d %H:%M:%S"
-                                                  (file-attribute-modification-time attrs))))
-              (insert ":END:\n"))
+              (org-directory-importer--insert-file-properties rel-path checksum attrs))
 
             ;; Insert source block
             (insert (format "#+begin_src %s :tangle %s :mkdirp yes\n"
@@ -854,15 +861,7 @@ Unlike directory import commands, this function:
 
     ;; Add properties for change tracking (unless skip-metadata)
     (unless skip-metadata
-      (insert ":PROPERTIES:\n")
-      (insert (format ":IMPORT_PATH: %s\n" filename))
-      (insert (format ":IMPORT_CHECKSUM: %s\n" checksum))
-      (insert (format ":IMPORT_SIZE: %s\n"
-                      (number-to-string (file-attribute-size attrs))))
-      (insert (format ":IMPORT_MTIME: %s\n"
-                      (format-time-string "%Y-%m-%d %H:%M:%S"
-                                          (file-attribute-modification-time attrs))))
-      (insert ":END:\n"))
+      (org-directory-importer--insert-file-properties filename checksum attrs))
 
     ;; Insert source block
     (insert (format "#+begin_src %s :tangle %s :mkdirp yes\n"
