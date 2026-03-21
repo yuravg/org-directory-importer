@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks  -*- lexical-binding: t; -*-
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.6.1
+;; Version: 1.6.2
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "29.1") (org "9.0"))
@@ -72,14 +72,14 @@
 ;;
 ;; `org-directory-importer-mode'
 ;;   Activates the minor mode keymap in Org buffers.
-;;   Binds C-c i to `org-directory-importer-menu'.
+;;   Binds C-c C-M-i to `org-directory-importer-menu'.
 ;;   Enable globally: (add-hook 'org-mode-hook #'org-directory-importer-mode)
 ;;
 ;; QUICK START:
 ;;   M-x org-directory-importer-import RET
 ;;   Select a directory, and the structure will be inserted at point.
 ;;
-;;   Or enable the minor mode and use C-c i for the transient menu.
+;;   Or enable the minor mode and use C-c C-M-i for the transient menu.
 ;;
 ;; FILTERING:
 ;; Files are excluded through three complementary layers:
@@ -104,7 +104,7 @@
 
 (defvar org-directory-importer-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c i") #'org-directory-importer-menu)
+    (define-key map (kbd "C-c C-M-i") #'org-directory-importer-menu)
     map)
   "Keymap for `org-directory-importer-mode'.
 \\{org-directory-importer-mode-map}")
@@ -1366,11 +1366,11 @@ Only searches direct children of current heading, not deeper descendants."
    ("f" "File (with metadata)" org-directory-importer-import-file
     :description "Import single file with metadata")
    ("F" "File (plain)" (lambda ()
-                          (interactive)
-                          (call-interactively
-                           (lambda (file)
-                             (interactive "fSelect file to import: ")
-                             (org-directory-importer-import-file file t))))
+                         (interactive)
+                         (call-interactively
+                          (lambda (file)
+                            (interactive "fSelect file to import: ")
+                            (org-directory-importer-import-file file t))))
     :description "Import single file without metadata")]
   ["Exit"
    ("q" "Quit" transient-quit-one)])
@@ -1426,7 +1426,7 @@ tangleable Org documents, enabling literate programming workflows."
   ["Help"
    :description "Quick reference"
    ("?" "Show key bindings" (lambda () (interactive)
-                               (message "C-c i: menu | Import modes: i (meta), I (opts) | Update: u | Refresh: r")))]
+                              (message "C-c C-M-i: menu | Import modes: i (meta), I (opts) | Update: u | Refresh: r")))]
   ["Exit"
    ("q" "Quit" transient-quit-one)])
 

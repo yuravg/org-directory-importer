@@ -155,8 +155,8 @@
     (should-not org-directory-importer-mode)))
 
 (ert-deftest test-minor-mode-keymap-has-binding ()
-  "Minor mode keymap should have C-c i bound."
-  (should (eq (lookup-key org-directory-importer-mode-map (kbd "C-c i"))
+  "Minor mode keymap should have C-c C-M-i bound."
+  (should (eq (lookup-key org-directory-importer-mode-map (kbd "C-c C-M-i"))
               'org-directory-importer-menu)))
 
 (provide 'test-helpers)
