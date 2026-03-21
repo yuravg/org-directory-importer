@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks  -*- lexical-binding: t; -*-
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.6.2
+;; Version: 1.6.3
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "29.1") (org "9.0"))
@@ -964,6 +964,19 @@ on the affected entries."
                  count-entries (if (= count-entries 1) "y" "ies"))
       (message "No IMPORT_* properties found in buffer"))))
 
+(defun org-directory-importer--get-src-block-content (marker)
+  "Return the source block content at MARKER position, or nil.
+Navigates to MARKER, finds the src block under that heading,
+and returns the text between #+begin_src and #+end_src lines."
+  (save-excursion
+    (goto-char marker)
+    (when (re-search-forward "^[ \t]*#\\+begin_src" (org-entry-end-position) t)
+      (forward-line 1)
+      (let ((start (point)))
+        (when (re-search-forward "^[ \t]*#\\+end_src" (org-entry-end-position) t)
+          (beginning-of-line)
+          (buffer-substring-no-properties start (point)))))))
+
 (defun org-directory-importer--replace-src-block-content (new-content)
   "Replace the content of the source block surrounding point with NEW-CONTENT.
 Point must be inside a source block.  Searches backward for #+begin_src
@@ -1163,7 +1176,16 @@ STATS is a plist with :modified :new :deleted :unchanged counters."
                                             (buffer-string)))
                              (new-checksum (secure-hash 'sha256 new-content)))
 
-                        (if (equal old-checksum new-checksum)
+                        (if (and (equal old-checksum new-checksum)
+                                 ;; Also verify block content matches file;
+                                 ;; catches edits in Org followed by git revert
+                                 ;; on disk, where the checksum still matches
+                                 ;; the original import but the block has diverged.
+                                 (let ((block-content
+                                        (org-directory-importer--get-src-block-content marker)))
+                                   (and block-content
+                                        (equal (secure-hash 'sha256 block-content)
+                                               new-checksum))))
                             ;; Unchanged
                             (cl-incf (plist-get stats :unchanged))
                           ;; Modified: update block

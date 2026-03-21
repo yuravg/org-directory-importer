@@ -622,6 +622,67 @@ not just use the heading at point."
       (delete-directory test-dir t)
       (kill-buffer org-buffer))))
 
+(ert-deftest test-update-detects-block-content-divergence ()
+  "Test that update detects when Org block content diverges from disk.
+Simulates: edit in Org + tangle, then git revert on disk.
+The stored IMPORT_CHECKSUM matches the file (both are original),
+but the src block content differs — update should detect this."
+  (let* ((test-dir (make-temp-file "test-update-diverge-" t))
+         (test-file (expand-file-name "test.txt" test-dir))
+         (original-content "Original content\n")
+         (edited-content "Edited in Org\n")
+         (org-buffer (generate-new-buffer "*test-update-diverge*")))
+    (unwind-protect
+        (progn
+          ;; Create test file with original content
+          (with-temp-file test-file
+            (insert original-content))
+
+          ;; Initial import
+          (with-current-buffer org-buffer
+            (org-mode)
+            (setq buffer-file-name (expand-file-name "test.org" test-dir))
+            (org-directory-importer-import test-dir)
+
+            ;; Verify import worked
+            (goto-char (point-min))
+            (should (re-search-forward "Original content" nil t))
+
+            ;; Simulate editing the src block in Org (as if user edited + tangled)
+            ;; 1. Change the src block content
+            (goto-char (point-min))
+            (re-search-forward "#\\+begin_src")
+            (forward-line 1)
+            (let ((start (point)))
+              (re-search-forward "#\\+end_src")
+              (beginning-of-line)
+              (delete-region start (point))
+              (goto-char start)
+              (insert edited-content))
+
+            ;; 2. The file on disk still has original content (simulating git revert)
+            ;; — we don't need to change it, it already has "Original content\n"
+
+            ;; 3. IMPORT_CHECKSUM still matches the file on disk (both are original)
+            ;; This is the crux of the bug: checksum matches but block content differs
+
+            ;; Run update — should detect the divergence
+            (goto-char (point-min))
+            (re-search-forward "IMPORT_SOURCE")
+            (beginning-of-line)
+            (org-directory-importer-import-update)
+
+            ;; The src block should now be restored to match the file on disk
+            (goto-char (point-min))
+            (should (re-search-forward "Original content" nil t))
+            ;; The edited content should be gone
+            (goto-char (point-min))
+            (should-not (re-search-forward "Edited in Org" nil t))))
+
+      ;; Cleanup
+      (delete-directory test-dir t)
+      (kill-buffer org-buffer))))
+
 (provide 'test-update)
 
 ;;; test-update.el ends here
