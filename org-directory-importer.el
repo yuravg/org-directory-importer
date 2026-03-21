@@ -1,7 +1,7 @@
 ;;; org-directory-importer.el --- Import directory structures as Org Babel source blocks  -*- lexical-binding: t; -*-
 
 ;; Author: Yuriy VG <yuravg@gmail.com>
-;; Version: 1.6.0
+;; Version: 1.6.1
 ;; URL: https://github.com/yuravg/org-directory-importer
 ;; Keywords: org, babel, files, import
 ;; Package-Requires: ((emacs "29.1") (org "9.0"))
@@ -1292,6 +1292,8 @@ Only searches direct children of current heading, not deeper descendants."
 
 ;;; Transient menus
 
+;; Option infixes (toggles and settings)
+
 (transient-define-infix org-directory-importer--infix-tangle-path-type ()
   "Toggle tangle path type between relative and absolute."
   :class 'transient-lisp-variable
@@ -1301,8 +1303,9 @@ Only searches direct children of current heading, not deeper descendants."
                 'absolute
               'relative))
   :description (lambda ()
-                 (format "Tangle path type: %s"
-                         org-directory-importer-tangle-path-type)))
+                 (format "Tangle paths: %s"
+                         (propertize (symbol-name org-directory-importer-tangle-path-type)
+                                     'face 'transient-value))))
 
 (transient-define-infix org-directory-importer--infix-detect-binary ()
   "Toggle binary file detection."
@@ -1311,8 +1314,11 @@ Only searches direct children of current heading, not deeper descendants."
   :reader (lambda (_prompt _initial-input _history)
             (not org-directory-importer-detect-binary-files))
   :description (lambda ()
-                 (format "Detect binary files: %s"
-                         (if org-directory-importer-detect-binary-files "yes" "no"))))
+                 (format "Binary detection: %s"
+                         (propertize (if org-directory-importer-detect-binary-files "on" "off")
+                                     'face (if org-directory-importer-detect-binary-files
+                                               'transient-value
+                                             'transient-inactive-value)))))
 
 (transient-define-infix org-directory-importer--infix-gitignore-local ()
   "Toggle local gitignore respect."
@@ -1321,8 +1327,11 @@ Only searches direct children of current heading, not deeper descendants."
   :reader (lambda (_prompt _initial-input _history)
             (not org-directory-importer-respect-gitignore-local))
   :description (lambda ()
-                 (format "Respect local .gitignore: %s"
-                         (if org-directory-importer-respect-gitignore-local "yes" "no"))))
+                 (format "Local .gitignore: %s"
+                         (propertize (if org-directory-importer-respect-gitignore-local "on" "off")
+                                     'face (if org-directory-importer-respect-gitignore-local
+                                               'transient-value
+                                             'transient-inactive-value)))))
 
 (transient-define-infix org-directory-importer--infix-gitignore-global ()
   "Toggle global gitignore respect."
@@ -1331,43 +1340,95 @@ Only searches direct children of current heading, not deeper descendants."
   :reader (lambda (_prompt _initial-input _history)
             (not org-directory-importer-respect-gitignore-global))
   :description (lambda ()
-                 (format "Respect global gitignore: %s"
-                         (if org-directory-importer-respect-gitignore-global "yes" "no"))))
+                 (format "Global gitignore: %s"
+                         (propertize (if org-directory-importer-respect-gitignore-global "on" "off")
+                                     'face (if org-directory-importer-respect-gitignore-global
+                                               'transient-value
+                                             'transient-inactive-value)))))
+
+;; Import submenu
 
 ;;;###autoload (autoload 'org-directory-importer-import-menu "org-directory-importer" nil t)
 (transient-define-prefix org-directory-importer-import-menu ()
-  "Import commands for org-directory-importer."
-  ["Options"
+  "Import commands with options for org-directory-importer."
+  ["Import Options"
+   :description "Configure import behavior before importing"
    (org-directory-importer--infix-tangle-path-type)
    (org-directory-importer--infix-detect-binary)
    (org-directory-importer--infix-gitignore-local)
    (org-directory-importer--infix-gitignore-global)]
-  ["Import"
-   ("d" "Import directory" org-directory-importer-import)
-   ("f" "Import file" org-directory-importer-import-file)])
+  ["Import Commands"
+   :description "Import source files into Org document"
+   ("d" "Directory (with metadata)" org-directory-importer-import
+    :description "Import directory with change-tracking metadata")
+   ("D" "Directory (plain)" org-directory-importer-import-plain
+    :description "Import directory without metadata (one-time import)")
+   ("f" "File (with metadata)" org-directory-importer-import-file
+    :description "Import single file with metadata")
+   ("F" "File (plain)" (lambda ()
+                          (interactive)
+                          (call-interactively
+                           (lambda (file)
+                             (interactive "fSelect file to import: ")
+                             (org-directory-importer-import-file file t))))
+    :description "Import single file without metadata")]
+  ["Exit"
+   ("q" "Quit" transient-quit-one)])
+
+;; Management submenu
 
 ;;;###autoload (autoload 'org-directory-importer-manage-menu "org-directory-importer" nil t)
 (transient-define-prefix org-directory-importer-manage-menu ()
   "Management commands for org-directory-importer."
-  ["Actions"
-   ("u" "Update import" org-directory-importer-import-update)
-   ("r" "Refresh block at point" org-directory-importer-refresh-block)
-   ("p" "Prune metadata" org-directory-importer-prune-metadata)
-   ("c" "Clear gitignore cache" org-directory-importer-clear-gitignore-cache)])
+  ["Update Operations"
+   :description "Synchronize imported content with source files"
+   ("u" "Update imported directory" org-directory-importer-import-update
+    :description "Detect and update modified/new/deleted files")
+   ("r" "Refresh block at point" org-directory-importer-refresh-block
+    :description "Reload content from tangle target file")]
+  ["Metadata Management"
+   :description "Manage IMPORT_* properties"
+   ("p" "Prune all metadata" org-directory-importer-prune-metadata
+    :description "Remove all IMPORT_* properties from buffer")]
+  ["Cache Management"
+   :description "Clear cached patterns and settings"
+   ("c" "Clear gitignore cache" org-directory-importer-clear-gitignore-cache
+    :description "Force re-read of .gitignore files")]
+  ["Exit"
+   ("q" "Quit" transient-quit-one)])
+
+;; Main menu
 
 ;;;###autoload (autoload 'org-directory-importer-menu "org-directory-importer" nil t)
 (transient-define-prefix org-directory-importer-menu ()
-  "Main menu for org-directory-importer."
-  ["Import"
-   ("d" "Import directory" org-directory-importer-import)
-   ("f" "Import file" org-directory-importer-import-file)]
-  ["Manage"
-   ("u" "Update import" org-directory-importer-import-update)
-   ("r" "Refresh block at point" org-directory-importer-refresh-block)
-   ("p" "Prune metadata" org-directory-importer-prune-metadata)
-   ("c" "Clear gitignore cache" org-directory-importer-clear-gitignore-cache)]
-  ["Options"
-   ("T" "Import options..." org-directory-importer-import-menu)])
+  "Main menu for org-directory-importer.
+
+Org Directory Importer turns source directories and files into
+tangleable Org documents, enabling literate programming workflows."
+  ["Quick Import"
+   :description "Most common operations"
+   ("i" "Import directory..." org-directory-importer-import
+    :description "Import with metadata (recommended)")
+   ("f" "Import file..." org-directory-importer-import-file
+    :description "Import single file with metadata")]
+  ["Update & Sync"
+   :description "Keep imported content synchronized"
+   ("u" "Update import" org-directory-importer-import-update
+    :description "Update from IMPORT_SOURCE directory")
+   ("r" "Refresh block" org-directory-importer-refresh-block
+    :description "Reload block from :tangle file")]
+  ["Submenus"
+   :description "Advanced options and management"
+   ("I" "Import menu..." org-directory-importer-import-menu
+    :description "Import with options (plain mode, toggles)")
+   ("M" "Manage menu..." org-directory-importer-manage-menu
+    :description "Metadata and cache management")]
+  ["Help"
+   :description "Quick reference"
+   ("?" "Show key bindings" (lambda () (interactive)
+                               (message "C-c i: menu | Import modes: i (meta), I (opts) | Update: u | Refresh: r")))]
+  ["Exit"
+   ("q" "Quit" transient-quit-one)])
 
 (provide 'org-directory-importer)
 
